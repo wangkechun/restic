@@ -45,23 +45,23 @@ go build -o zap
 在 **Git 仓库根目录** 内执行：
 
 ```bash
-# 1. 初始化（在 .git/zap-restic/ 下创建 restic 仓库与配置）
-zap init
-
-# 2. 保存当前工作区快照（默认标签 manual）
+# 1. 保存当前工作区快照（首次 save 会自动 init，默认标签 manual）
 zap save
 
-# 3. 带自定义标签保存
+# 2. 带自定义标签保存
 zap save before-refactor
 
-# 4. 查看最近快照
+# 3. 查看最近快照
 zap list
 
-# 5. 与当前工作区对比（默认最新快照）
+# 4. 与当前工作区对比（默认最新快照）
 zap diff
 
-# 6. 恢复到某一快照（整树）
+# 5. 恢复到某一快照（整树）
 zap restore latest
+
+# 可选：显式初始化（首次 save 也会做同样的事）
+zap init
 ```
 
 ---
@@ -103,6 +103,7 @@ zap init
 
 备份整个 Git 工作区根目录。
 
+- **首次执行**时若尚未初始化，会自动执行与 `zap init` 相同的步骤（创建密码、排除文件与 restic 仓库），再继续备份
 - 默认标签：`manual`
 - 固定标签：`zap`（用于筛选本工具创建的快照）
 - 使用 `--skip-if-unchanged`：内容未变时不产生新快照
@@ -242,7 +243,7 @@ zap diff2 <id1> <id2>
 | 现象 | 处理 |
 |------|------|
 | `not inside a git repository` | 在 Git 仓库内执行，或先 `git init` |
-| `not initialized. Run: zap init` | 先运行 `zap init` |
+| `not initialized. Run: zap init` | 其他命令需先 `zap init`；或先执行一次 `zap save`（会自动 init） |
 | 快照列表为空 | 确认在正确仓库根目录，且曾 `zap save` 成功 |
 | 恢复后文件不对 | 检查是否误用整树 `restore`；优先用带 paths 的部分恢复 |
 | 怀疑仓库损坏 | `zap check`；必要时 `zap restic repair`（谨慎） |

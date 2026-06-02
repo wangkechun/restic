@@ -9,7 +9,7 @@
 // Usage:
 //
 //	zap init                       initialize the snapshot repo under .git/zap-restic
-//	zap save [label]               snapshot the working tree (default label: manual)
+//	zap save [label]               snapshot the working tree (auto-inits on first run)
 //	zap list [-n N]                list recent snapshots (default 20)
 //	zap diff [snapshot]            diff a snapshot against the working tree (default: latest)
 //	zap diff2 <snap_a> <snap_b>    diff two snapshots
@@ -205,6 +205,12 @@ func ensureInitialized() {
 	}
 }
 
+func initIfNeeded() {
+	if !exists(resticRepo()) || !exists(passwordFile()) {
+		cmdInit()
+	}
+}
+
 func cmdInit() {
 	if err := os.MkdirAll(metaDir(), 0o700); err != nil {
 		die("cannot create meta dir: %v", err)
@@ -246,7 +252,7 @@ func cmdInit() {
 }
 
 func cmdSave(args []string) {
-	ensureInitialized()
+	initIfNeeded()
 	root := gitRoot()
 	label := "manual"
 	if len(args) > 0 && args[0] != "" {
@@ -514,7 +520,7 @@ func usage() {
 
 usage:
   zap init                       initialize the snapshot repo under .git/zap-restic
-  zap save [label]               snapshot the working tree (default label: manual)
+  zap save [label]               snapshot the working tree (auto-inits on first run)
   zap list [-n N]                list recent snapshots (default 20)
   zap diff [snapshot]            diff a snapshot against the working tree (default: latest)
   zap diff2 <snap_a> <snap_b>    diff two snapshots
