@@ -2,7 +2,8 @@
 // per-git-repo fast snapshot helpers (a Go port of the original "rundo" tool).
 //
 // restic is compiled directly into zap; there is no external restic dependency.
-// Every invocation defaults to restic's --fast mode (see README-FAST.zh-CN.md)
+// Every invocation defaults to restic's --fast mode (see README-FAST.zh-CN.md;
+// zap usage: README-ZAP.zh-CN.md).
 // unless it is explicitly disabled with --fast=false.
 //
 // Usage:
