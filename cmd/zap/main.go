@@ -166,6 +166,34 @@ func resticBaseArgs() []string {
 	return []string{"-r", resticRepo(), "--password-file", passwordFile()}
 }
 
+// hasRepoFlag reports whether args already select a repository location.
+func hasRepoFlag(args []string) bool {
+	for i, a := range args {
+		switch {
+		case a == "-r", a == "--repo", a == "--repository", a == "--repository-file":
+			return true
+		case strings.HasPrefix(a, "--repo="),
+			strings.HasPrefix(a, "--repository="),
+			strings.HasPrefix(a, "--repository-file="):
+			return true
+		case strings.HasPrefix(a, "-r") && len(a) > 2:
+			return true
+		case (a == "-r" || a == "--repo" || a == "--repository") && i+1 < len(args):
+			return true
+		}
+	}
+	return false
+}
+
+// resticPassthroughArgs prepends the zap repo/password when the user did not
+// specify their own repository (see README-ZAP.zh-CN.md, zap restic).
+func resticPassthroughArgs(args []string) []string {
+	if hasRepoFlag(args) {
+		return args
+	}
+	return append(resticBaseArgs(), args...)
+}
+
 func exists(p string) bool {
 	_, err := os.Lstat(p)
 	return err == nil
@@ -555,7 +583,7 @@ func main() {
 		cmdCheck()
 	case "restic":
 		// Passthrough to the full restic CLI (also defaults to --fast).
-		os.Exit(runRestic(args))
+		os.Exit(runRestic(resticPassthroughArgs(args)))
 	case "-h", "--help", "help":
 		usage()
 	default:
