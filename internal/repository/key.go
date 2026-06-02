@@ -74,6 +74,15 @@ func OpenKey(ctx context.Context, s *Repository, id restic.ID, password string) 
 		return nil, errors.New("only supported KDF is scrypt()")
 	}
 
+	if master, ok := loadKDFCache(id, password, k); ok {
+		k.master = master
+		k.id = id
+		if !k.master.Valid() {
+			return nil, errors.New("Invalid key for repository")
+		}
+		return k, nil
+	}
+
 	// derive user key
 	params := crypto.Params{
 		N: k.N,
@@ -104,6 +113,8 @@ func OpenKey(ctx context.Context, s *Repository, id restic.ID, password string) 
 	if !k.Valid() {
 		return nil, errors.New("Invalid key for repository")
 	}
+
+	saveKDFCache(id, password, k, k.master)
 
 	return k, nil
 }

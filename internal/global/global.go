@@ -21,6 +21,7 @@ import (
 	"github.com/restic/restic/internal/backend/sema"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/options"
+	"github.com/restic/restic/internal/profile"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/textfile"
@@ -35,7 +36,7 @@ import (
 // to a missing backend storage location or config file
 var ErrNoRepository = errors.New("repository does not exist")
 
-const Version = "0.18.1-dev (compiled manually)"
+const Version = "0.18.1-dev-fast (compiled manually)"
 
 // TimeFormat is the format used for all timestamps printed by restic.
 const TimeFormat = "2006-01-02 15:04:05"
@@ -61,6 +62,7 @@ type Options struct {
 	PackSize           uint
 	NoExtraVerify      bool
 	InsecureNoPassword bool
+	Fast               bool
 
 	backend.TransportOptions
 	limiter.Limits
@@ -105,6 +107,7 @@ func (opts *Options) AddFlags(f *pflag.FlagSet) {
 	f.StringSliceVar(&opts.RootCertFilenames, "cacert", nil, "`file` to load root certificates from (default: use system certificates or $RESTIC_CACERT)")
 	f.StringVar(&opts.TLSClientCertKeyFilename, "tls-client-cert", "", "path to a `file` containing PEM encoded TLS client certificate and private key (default: $RESTIC_TLS_CLIENT_CERT)")
 	f.BoolVar(&opts.InsecureNoPassword, "insecure-no-password", false, "use an empty password for the repository, must be passed to every restic command (insecure)")
+	f.BoolVar(&opts.Fast, "fast", false, "local fast mode: skip lock delays, skip backup locks, cache KDF (insecure, single-user only)")
 	f.BoolVar(&opts.InsecureTLS, "insecure-tls", false, "skip TLS certificate verification when connecting to the repository (insecure)")
 	f.BoolVar(&opts.CleanupCache, "cleanup-cache", false, "auto remove old cache directories")
 	const compressionFlag = "compression"
@@ -117,6 +120,10 @@ func (opts *Options) AddFlags(f *pflag.FlagSet) {
 	f.StringSliceVarP(&opts.Options, "option", "o", []string{}, "set extended option (`key=value`, can be specified multiple times)")
 	f.StringVar(&opts.HTTPUserAgent, "http-user-agent", "", "set a http user agent for outgoing http requests")
 	f.DurationVar(&opts.StuckRequestTimeout, "stuck-request-timeout", 5*time.Minute, "`duration` after which to retry stuck requests")
+
+	if os.Getenv("RESTIC_FAST") == "1" || os.Getenv("RESTIC_FAST") == "true" {
+		opts.Fast = true
+	}
 
 	opts.Repo = os.Getenv("RESTIC_REPOSITORY")
 	opts.RepositoryFile = os.Getenv("RESTIC_REPOSITORY_FILE")
@@ -299,34 +306,45 @@ const maxKeys = 20
 
 // OpenRepository reads the password and opens the repository.
 func OpenRepository(ctx context.Context, gopts Options, printer progress.Printer) (*repository.Repository, error) {
+	profile.Mark("open: start")
+
 	repo, err := readRepo(gopts)
 	if err != nil {
 		return nil, err
 	}
+	if gopts.Fast {
+		repository.EnableFastMode(repo)
+	}
+	profile.Mark("open: readRepo")
 
 	be, err := innerOpenBackend(ctx, repo, gopts, gopts.Extended, false, printer)
 	if err != nil {
 		return nil, err
 	}
+	profile.Mark("open: innerOpenBackend")
 
 	err = hasRepositoryConfig(ctx, be, repo, gopts)
 	if err != nil {
 		return nil, err
 	}
+	profile.Mark("open: hasRepositoryConfig")
 
 	s, err := createRepositoryInstance(be, gopts)
 	if err != nil {
 		return nil, err
 	}
+	profile.Mark("open: createRepositoryInstance")
 
 	err = decryptRepository(ctx, s, &gopts, printer)
 	if err != nil {
 		return nil, err
 	}
+	profile.Mark("open: decryptRepository (SearchKey)")
 
 	printRepositoryInfo(s, gopts, printer)
 
 	if gopts.NoCache {
+		profile.Mark("open: done (no cache)")
 		return s, nil
 	}
 
@@ -334,6 +352,7 @@ func OpenRepository(ctx context.Context, gopts Options, printer progress.Printer
 	if err != nil {
 		return nil, err
 	}
+	profile.Mark("open: setupCache")
 	return s, nil
 }
 

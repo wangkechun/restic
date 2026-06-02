@@ -17,6 +17,7 @@ import (
 	"github.com/restic/restic/internal/crypto"
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/errors"
+	"github.com/restic/restic/internal/profile"
 	"github.com/restic/restic/internal/repository/index"
 	"github.com/restic/restic/internal/repository/pack"
 	"github.com/restic/restic/internal/restic"
@@ -707,6 +708,7 @@ func (r *Repository) LoadIndex(ctx context.Context, p restic.TerminalCounterFact
 // loadIndexWithCallback loads all index files from the backend in parallel and stores them
 func (r *Repository) loadIndexWithCallback(ctx context.Context, p restic.TerminalCounterFactory, cb func(id restic.ID, idx *index.Index, err error) error) error {
 	debug.Log("Loading index")
+	profile.Mark("LoadIndex: start")
 
 	var bar *progress.Counter
 	if p != nil {
@@ -717,9 +719,11 @@ func (r *Repository) loadIndexWithCallback(ctx context.Context, p restic.Termina
 	if err != nil {
 		return err
 	}
+	profile.Mark("LoadIndex: idx.Load")
 
 	// Trigger GC to reset garbage collection threshold
 	runtime.GC()
+	profile.Mark("LoadIndex: runtime.GC")
 
 	if r.cfg.Version < 2 {
 		// sanity check
@@ -744,7 +748,9 @@ func (r *Repository) loadIndexWithCallback(ctx context.Context, p restic.Termina
 	}
 
 	// remove index files from the cache which have been removed in the repo
-	return r.prepareCache()
+	err = r.prepareCache()
+	profile.Mark("LoadIndex: prepareCache")
+	return err
 }
 
 // createIndexFromPacks creates a new index by reading all given pack files (with sizes).

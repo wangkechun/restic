@@ -16,6 +16,7 @@ import (
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/feature"
 	"github.com/restic/restic/internal/fs"
+	"github.com/restic/restic/internal/profile"
 	"github.com/restic/restic/internal/restic"
 	"golang.org/x/sync/errgroup"
 )
@@ -871,6 +872,8 @@ func (arch *Archiver) stopWorkers() {
 
 // Snapshot saves several targets and returns a snapshot.
 func (arch *Archiver) Snapshot(ctx context.Context, targets []string, opts SnapshotOptions) (*data.Snapshot, restic.ID, *Summary, error) {
+	profile.Mark("snapshot: start")
+
 	arch.summary = &Summary{
 		BackupStart: opts.BackupStart,
 	}
@@ -884,6 +887,7 @@ func (arch *Archiver) Snapshot(ctx context.Context, targets []string, opts Snaps
 	if err != nil {
 		return nil, restic.ID{}, nil, err
 	}
+	profile.Mark("snapshot: newTree")
 
 	var rootTreeID restic.ID
 
@@ -895,12 +899,16 @@ func (arch *Archiver) Snapshot(ctx context.Context, targets []string, opts Snaps
 			arch.runWorkers(wgCtx, wg, uploader)
 
 			debug.Log("starting snapshot")
-			fn, nodeCount, err := arch.saveTree(wgCtx, "/", atree, arch.loadParentTree(wgCtx, opts.ParentSnapshot), func(_ *data.Node, is ItemStats) {
+			parentTree := arch.loadParentTree(wgCtx, opts.ParentSnapshot)
+			profile.Mark("snapshot: loadParentTree")
+
+			fn, nodeCount, err := arch.saveTree(wgCtx, "/", atree, parentTree, func(_ *data.Node, is ItemStats) {
 				arch.trackItem("/", nil, nil, is, time.Since(start))
 			})
 			if err != nil {
 				return err
 			}
+			profile.Mark("snapshot: saveTree")
 
 			fnr := fn.take(wgCtx)
 			if fnr.err != nil {
@@ -932,11 +940,13 @@ func (arch *Archiver) Snapshot(ctx context.Context, targets []string, opts Snaps
 	if err != nil {
 		return nil, restic.ID{}, nil, err
 	}
+	profile.Mark("snapshot: WithBlobUploader (workers+saveTree)")
 
 	if opts.ParentSnapshot != nil && opts.SkipIfUnchanged {
 		ps := opts.ParentSnapshot
 		if ps.Tree != nil && rootTreeID.Equal(*ps.Tree) {
 			arch.summary.BackupEnd = time.Now()
+			profile.Mark("snapshot: skipIfUnchanged (no save)")
 			return nil, restic.ID{}, arch.summary, nil
 		}
 	}
@@ -975,6 +985,7 @@ func (arch *Archiver) Snapshot(ctx context.Context, targets []string, opts Snaps
 	if err != nil {
 		return nil, restic.ID{}, nil, err
 	}
+	profile.Mark("snapshot: SaveSnapshot")
 
 	return sn, id, arch.summary, nil
 }

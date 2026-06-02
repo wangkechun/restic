@@ -4,21 +4,33 @@ import (
 	"context"
 
 	"github.com/restic/restic/internal/global"
+	"github.com/restic/restic/internal/profile"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/ui/progress"
 )
 
-func internalOpenWithLocked(ctx context.Context, gopts global.Options, dryRun bool, exclusive bool, printer progress.Printer) (context.Context, *repository.Repository, func(), error) {
+type openLockConfig struct {
+	dryRun    bool
+	skipLock  bool
+	exclusive bool
+}
+
+func internalOpenWithLocked(ctx context.Context, gopts global.Options, cfg openLockConfig, printer progress.Printer) (context.Context, *repository.Repository, func(), error) {
 	repo, err := global.OpenRepository(ctx, gopts, printer)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	profile.Mark("lock: after OpenRepository")
+
+	if cfg.dryRun {
+		repo.SetDryRun()
+	}
 
 	unlock := func() {}
-	if !dryRun {
+	if !cfg.dryRun && !cfg.skipLock {
 		var lock *repository.Unlocker
 
-		lock, ctx, err = repository.Lock(ctx, repo, exclusive, gopts.RetryLock, func(msg string) {
+		lock, ctx, err = repository.Lock(ctx, repo, cfg.exclusive, gopts.RetryLock, func(msg string) {
 			if !gopts.JSON {
 				printer.P("%s", msg)
 			}
@@ -26,27 +38,40 @@ func internalOpenWithLocked(ctx context.Context, gopts global.Options, dryRun bo
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		profile.Mark("lock: repository.Lock")
 
 		unlock = lock.Unlock
-	} else {
-		repo.SetDryRun()
+	} else if cfg.skipLock && !cfg.dryRun {
+		profile.Mark("lock: skipped (fast/no-lock)")
 	}
 
 	return ctx, repo, unlock, nil
 }
 
+func skipLock(gopts global.Options) bool {
+	return gopts.Fast || gopts.NoLock
+}
+
 func openWithReadLock(ctx context.Context, gopts global.Options, noLock bool, printer progress.Printer) (context.Context, *repository.Repository, func(), error) {
-	// TODO enforce read-only operations once the locking code has moved to the repository
-	// As in-depth hardening, put the repository into read-only mode if noLock is true
-	// Not possible if the repository has to be locked.
-	return internalOpenWithLocked(ctx, gopts, noLock, false, printer)
+	return internalOpenWithLocked(ctx, gopts, openLockConfig{
+		dryRun:    noLock,
+		skipLock:  noLock || skipLock(gopts),
+		exclusive: false,
+	}, printer)
 }
 
 func openWithAppendLock(ctx context.Context, gopts global.Options, dryRun bool, printer progress.Printer) (context.Context, *repository.Repository, func(), error) {
-	// TODO enforce non-exclusive operations once the locking code has moved to the repository
-	return internalOpenWithLocked(ctx, gopts, dryRun, false, printer)
+	return internalOpenWithLocked(ctx, gopts, openLockConfig{
+		dryRun:    dryRun,
+		skipLock:  skipLock(gopts),
+		exclusive: false,
+	}, printer)
 }
 
 func openWithExclusiveLock(ctx context.Context, gopts global.Options, dryRun bool, printer progress.Printer) (context.Context, *repository.Repository, func(), error) {
-	return internalOpenWithLocked(ctx, gopts, dryRun, true, printer)
+	return internalOpenWithLocked(ctx, gopts, openLockConfig{
+		dryRun:    dryRun,
+		skipLock:  skipLock(gopts),
+		exclusive: true,
+	}, printer)
 }

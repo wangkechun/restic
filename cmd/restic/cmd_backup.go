@@ -25,6 +25,7 @@ import (
 	"github.com/restic/restic/internal/filter"
 	"github.com/restic/restic/internal/fs"
 	"github.com/restic/restic/internal/global"
+	"github.com/restic/restic/internal/profile"
 	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 	"github.com/restic/restic/internal/textfile"
@@ -484,6 +485,9 @@ func findParentSnapshot(ctx context.Context, repo restic.ListerLoaderUnpacked, o
 }
 
 func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, term ui.Terminal, args []string) error {
+	profile.Reset()
+	profile.Mark("backup: start")
+
 	var vsscfg fs.VSSConfig
 	var err error
 
@@ -503,6 +507,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 	if err != nil {
 		return err
 	}
+	profile.Mark("backup: opts.Check")
 
 	success := true
 	targets, err := collectTargets(opts, args, printer.E, term.InputRaw())
@@ -513,6 +518,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 			return err
 		}
 	}
+	profile.Mark("backup: collectTargets")
 
 	timeStamp := time.Now()
 	backupStart := timeStamp
@@ -532,6 +538,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 		return err
 	}
 	defer unlock()
+	profile.Mark("backup: openWithAppendLock")
 
 	progressReporter := backup.NewProgress(printer,
 		ui.CalculateProgressInterval(!gopts.Quiet, gopts.JSON, term.CanUpdateStatus()))
@@ -542,6 +549,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 	if err != nil {
 		return err
 	}
+	profile.Mark("backup: collectRejectByNameFuncs")
 
 	var parentSnapshot *data.Snapshot
 	if !opts.Stdin {
@@ -549,6 +557,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 		if err != nil {
 			return err
 		}
+		profile.Mark("backup: findParentSnapshot")
 
 		if !gopts.JSON {
 			if parentSnapshot != nil {
@@ -567,6 +576,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 	if err != nil {
 		return err
 	}
+	profile.Mark("backup: LoadIndex")
 
 	var targetFS fs.FS = fs.Local{}
 	if runtime.GOOS == "windows" && opts.UseFsSnapshot {
@@ -620,6 +630,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 	if err != nil {
 		return err
 	}
+	profile.Mark("backup: collectRejectFuncs")
 
 	selectByNameFilter := archiver.CombineRejectByNames(rejectByNameFuncs)
 	selectFilter := archiver.CombineRejects(rejectFuncs)
@@ -638,7 +649,11 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 		if !gopts.JSON {
 			printer.V("start scan on %v", targets)
 		}
-		wg.Go(func() error { return sc.Scan(cancelCtx, targets) })
+		wg.Go(func() error {
+			err := sc.Scan(cancelCtx, targets)
+			profile.Mark("backup: scanner.Scan (parallel)")
+			return err
+		})
 	}
 
 	arch := archiver.New(repo, targetFS, archiver.Options{ReadConcurrency: opts.ReadConcurrency})
@@ -684,12 +699,14 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 		printer.V("start backup on %v", targets)
 	}
 	_, id, summary, err := arch.Snapshot(ctx, targets, snapshotOpts)
+	profile.Mark("backup: arch.Snapshot")
 
 	// cleanly shutdown all running goroutines
 	cancel()
 
 	// let's see if one returned an error
 	werr := wg.Wait()
+	profile.Mark("backup: wg.Wait (scanner done)")
 
 	// return original error
 	if err != nil {
@@ -698,6 +715,7 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 
 	// Report finished execution
 	progressReporter.Finish(id, summary, opts.DryRun)
+	profile.Mark("backup: Finish (save snapshot metadata)")
 	if !success {
 		return ErrInvalidSourceData
 	}
