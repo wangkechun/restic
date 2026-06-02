@@ -111,6 +111,7 @@ type BackupOptions struct {
 	ReadConcurrency   uint
 	NoScan            bool
 	SkipIfUnchanged   bool
+	ListChanges       bool
 
 	readConcurrencyFlag *pflag.Flag
 }
@@ -155,6 +156,7 @@ func (opts *BackupOptions) AddFlags(f *pflag.FlagSet) {
 		f.BoolVar(&opts.ExcludeCloudFiles, "exclude-cloud-files", false, "excludes online-only cloud files (such as OneDrive, iCloud drive, …)")
 	}
 	f.BoolVar(&opts.SkipIfUnchanged, "skip-if-unchanged", false, "skip snapshot creation if identical to parent snapshot")
+	f.BoolVar(&opts.ListChanges, "list-changes", false, "print new and changed files (directory counts remain in the summary)")
 
 	opts.readConcurrencyFlag = f.Lookup("read-concurrency")
 
@@ -493,9 +495,9 @@ func runBackup(ctx context.Context, opts BackupOptions, gopts global.Options, te
 
 	var printer backup.ProgressPrinter
 	if gopts.JSON {
-		printer = backup.NewJSONProgress(term, gopts.Verbosity)
+		printer = backup.NewJSONProgress(term, gopts.Verbosity, opts.ListChanges)
 	} else {
-		printer = backup.NewTextProgress(term, gopts.Verbosity)
+		printer = backup.NewTextProgress(term, gopts.Verbosity, opts.ListChanges)
 	}
 	if runtime.GOOS == "windows" {
 		if vsscfg, err = fs.ParseVSSConfig(gopts.Extended); err != nil {

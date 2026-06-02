@@ -99,7 +99,7 @@ zap init
 
 ---
 
-### `zap save [label]`
+### `zap save [label] [--no-list]`
 
 备份整个 Git 工作区根目录。
 
@@ -107,11 +107,14 @@ zap init
 - 默认标签：`manual`
 - 固定标签：`zap`（用于筛选本工具创建的快照）
 - 使用 `--skip-if-unchanged`：内容未变时不产生新快照
+- **默认列出**本次备份中新增与变更的文件（不含未修改项；目录变更见汇总行）；加 `--no-list` 可关闭
 
 ```bash
 zap save
 zap save wip
 zap save "experiment-2024-06-02"
+zap save --no-list          # 只显示汇总行，不逐条列出变更
+zap save wip --no-list
 ```
 
 ---

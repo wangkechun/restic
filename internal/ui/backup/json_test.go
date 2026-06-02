@@ -10,7 +10,7 @@ import (
 
 func createJSONProgress() (*ui.MockTerminal, ProgressPrinter) {
 	term := &ui.MockTerminal{}
-	printer := NewJSONProgress(term, 3)
+	printer := NewJSONProgress(term, 3, false)
 	return term, printer
 }
 

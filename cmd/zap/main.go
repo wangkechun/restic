@@ -9,7 +9,7 @@
 // Usage:
 //
 //	zap init                       initialize the snapshot repo under .git/zap-restic
-//	zap save [label]               snapshot the working tree (auto-inits on first run)
+//	zap save [label] [--no-list]   snapshot the working tree (auto-inits on first run)
 //	zap list [-n N]                list recent snapshots (default 20)
 //	zap diff [snapshot]            diff a snapshot against the working tree (default: latest)
 //	zap diff2 <snap_a> <snap_b>    diff two snapshots
@@ -251,12 +251,33 @@ func cmdInit() {
 	fmt.Printf("  excludes:  %s\n", excludeFile())
 }
 
+func parseSaveArgs(args []string) (label string, listChanges bool, extra []string) {
+	label = "manual"
+	listChanges = true
+	var pos []string
+	for _, a := range args {
+		switch a {
+		case "--no-list":
+			listChanges = false
+		default:
+			pos = append(pos, a)
+		}
+	}
+	if len(pos) > 0 && pos[0] != "" {
+		label = pos[0]
+	}
+	if len(pos) > 1 {
+		extra = pos[1:]
+	}
+	return label, listChanges, extra
+}
+
 func cmdSave(args []string) {
 	initIfNeeded()
 	root := gitRoot()
-	label := "manual"
-	if len(args) > 0 && args[0] != "" {
-		label = args[0]
+	label, listChanges, extra := parseSaveArgs(args)
+	if len(extra) > 0 {
+		die("unknown save option(s): %s", strings.Join(extra, " "))
 	}
 
 	cmd := append(resticBaseArgs(),
@@ -268,6 +289,9 @@ func cmdSave(args []string) {
 		"--skip-if-unchanged",
 		"--exclude-file", excludeFile(),
 	)
+	if listChanges {
+		cmd = append(cmd, "--list-changes")
+	}
 	mustRestic(cmd)
 
 	if latest := latestSnapshotID(); latest != "" {
@@ -520,7 +544,7 @@ func usage() {
 
 usage:
   zap init                       initialize the snapshot repo under .git/zap-restic
-  zap save [label]               snapshot the working tree (auto-inits on first run)
+  zap save [label] [--no-list]   snapshot the working tree (lists new/changed by default)
   zap list [-n N]                list recent snapshots (default 20)
   zap diff [snapshot]            diff a snapshot against the working tree (default: latest)
   zap diff2 <snap_a> <snap_b>    diff two snapshots

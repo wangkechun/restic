@@ -15,19 +15,21 @@ import (
 type TextProgress struct {
 	progress.Printer
 
-	term      ui.Terminal
-	verbosity uint
+	term        ui.Terminal
+	verbosity   uint
+	listChanges bool
 }
 
 // assert that Backup implements the ProgressPrinter interface
 var _ ProgressPrinter = &TextProgress{}
 
 // NewTextProgress returns a new backup progress reporter.
-func NewTextProgress(term ui.Terminal, verbosity uint) *TextProgress {
+func NewTextProgress(term ui.Terminal, verbosity uint, listChanges bool) *TextProgress {
 	return &TextProgress{
-		Printer:   ui.NewProgressPrinter(false, verbosity, term),
-		term:      term,
-		verbosity: verbosity,
+		Printer:     ui.NewProgressPrinter(false, verbosity, term),
+		term:        term,
+		verbosity:   verbosity,
+		listChanges: listChanges,
 	}
 }
 
@@ -91,6 +93,21 @@ func (b *TextProgress) Error(_ string, err error) error {
 // file/dir has been saved successfully.
 func (b *TextProgress) CompleteItem(messageType, item string, s archiver.ItemStats, d time.Duration) {
 	item = ui.Quote(item)
+
+	if b.listChanges {
+		switch messageType {
+		case "file new":
+			b.P("new       %v\n", item)
+			return
+		case "file modified":
+			b.P("modified  %v\n", item)
+			return
+		case "dir new", "dir modified", "dir unchanged":
+			// Parent dirs are updated when a file changes; skip them here.
+			// Dir counts remain in the summary line at the end.
+			return
+		}
+	}
 
 	switch messageType {
 	case "dir new":

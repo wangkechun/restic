@@ -14,19 +14,21 @@ import (
 type JSONProgress struct {
 	progress.Printer
 
-	term ui.Terminal
-	v    uint
+	term        ui.Terminal
+	v           uint
+	listChanges bool
 }
 
 // assert that Backup implements the ProgressPrinter interface
 var _ ProgressPrinter = &JSONProgress{}
 
 // NewJSONProgress returns a new backup progress reporter.
-func NewJSONProgress(term ui.Terminal, verbosity uint) *JSONProgress {
+func NewJSONProgress(term ui.Terminal, verbosity uint, listChanges bool) *JSONProgress {
 	return &JSONProgress{
-		Printer: ui.NewProgressPrinter(true, verbosity, term),
-		term:    term,
-		v:       verbosity,
+		Printer:     ui.NewProgressPrinter(true, verbosity, term),
+		term:        term,
+		v:           verbosity,
+		listChanges: listChanges,
 	}
 }
 
@@ -89,8 +91,14 @@ func (b *JSONProgress) Error(item string, err error) error {
 // CompleteItem is the status callback function for the archiver when a
 // file/dir has been saved successfully.
 func (b *JSONProgress) CompleteItem(messageType, item string, s archiver.ItemStats, d time.Duration) {
-	if b.v < 2 {
+	if b.v < 2 && !b.listChanges {
 		return
+	}
+	if b.listChanges && b.v < 2 {
+		switch messageType {
+		case "dir unchanged", "file unchanged", "dir new", "dir modified":
+			return
+		}
 	}
 
 	switch messageType {

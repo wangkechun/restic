@@ -10,7 +10,7 @@ import (
 
 func createTextProgress() (*ui.MockTerminal, ProgressPrinter) {
 	term := &ui.MockTerminal{}
-	printer := NewTextProgress(term, 3)
+	printer := NewTextProgress(term, 3, false)
 	return term, printer
 }
 
